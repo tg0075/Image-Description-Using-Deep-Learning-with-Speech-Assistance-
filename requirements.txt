@@ -3,3 +3,4 @@ torch
 transformers
 Pillow
 pyttsx3
+deep_translator
