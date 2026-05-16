@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Image Description Using Deep Learning with Speech Assistance</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Poppins', sans-serif;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #147a8b, #4e2973);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #fff;
+    }
+
+    .container {
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(30px);
+      border-radius: 20px;
+      padding: 40px 30px;
+      width: 90%;
+      max-width: 520px;
+      text-align: center;
+    }
+
+    h1 { margin-bottom: 1rem; }
+
+    select, input[type="file"] {
+      margin: 10px 0;
+      padding: 10px;
+      border-radius: 10px;
+      border: none;
+      background: #ffffff30;
+      color: #bec0c0;
+      cursor: pointer;
+    }
+
+    img, video {
+      margin-top: 10px;
+      max-width: 100%;
+      border-radius: 15px;
+      display: none;
+    }
+
+    #caption { margin-top: 1rem; font-weight: 600; }
+    #caption-accuracy { margin-top: 0.5rem; font-size: 0.9rem; color: #ffd700; }
+    #translated { margin-top: .5rem; color: #ffeaa7; }
+
+    #captionsList p {
+      background: #ffffff15;
+      padding: 12px;
+      border-radius: 8px;
+      margin: 8px 0;
+      text-align: left;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .accuracy-badge {
+      background: #ffd700;
+      color: #000;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      white-space: nowrap;
+      margin-left: 10px;
+    }
+
+    button {
+      margin-top: 10px;
+      padding: 10px 18px;
+      border-radius: 10px;
+      background: #ffffff30;
+      color: #fff;
+      border: none;
+      cursor: pointer;
+    }
+
+    button:hover { background: #ffffff50; }
+
+    hr { margin: 15px 0; opacity: 0.3; }
+    #languageSelect { 
+      background: #f2ecec30;
+      color: #000000;
+      border: none;
+      padding: 10px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      cursor: pointer;
+      
+     }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>Image Description Using Deep Learning with Speech Assistance</h1>
+
+    <!-- Language Selection -->
+    <select id="languageSelect">
+  <option value="en">English</option>
+  <option value="ta">Tamil</option>
+  <option value="hi">Hindi</option>
+  <option value="te">Telugu</option>
+  <option value="ml">Malayalam</option>
+</select>
+
+
+    <!-- Camera Section -->
+    <video id="video" autoplay></video>
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <button id="openCameraBtn">📷 Open Camera</button>
+    <button id="captureBtn" style="display:none;">📸 Capture</button>
+    <button id="closeCameraBtn" style="display:none;">❌ Close Camera</button>
+
+    <hr>
+
+    <!-- Upload -->
+    <input type="file" id="imageInput" accept="image/*" />
+    <img id="uploadedPhoto" />
+
+    <!-- Output -->
+    <div id="caption"></div>
+    <div id="translated"></div>
+    <div id="captionsList"></div>
+
+    <!-- Speech -->
+    <button id="speakBtn" style="display:none;">🔊 Speak English</button>
+    <button id="speakTranslatedBtn" style="display:none;">🔊 Speak Selected Language</button>
+  </div>
+
+  <script>
+    const imageInput = document.getElementById("imageInput");
+    const uploadedPhoto = document.getElementById("uploadedPhoto");
+    const captionDiv = document.getElementById("caption");
+    const translatedDiv = document.getElementById("translated");
+    const captionsList = document.getElementById("captionsList");
+    const speakBtn = document.getElementById("speakBtn");
+    const speakTranslatedBtn = document.getElementById("speakTranslatedBtn");
+    const languageSelect = document.getElementById("languageSelect");
+
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const openCameraBtn = document.getElementById("openCameraBtn");
+    const captureBtn = document.getElementById("captureBtn");
+    const closeCameraBtn = document.getElementById("closeCameraBtn");
+
+    let stream = null;
+
+    function analyzeImage(formData) {
+      formData.append("language", languageSelect.value);
+
+      captionDiv.innerText = "Analyzing image...";
+      translatedDiv.innerText = "";
+      captionsList.innerHTML = "";
+      speakBtn.style.display = "none";
+      speakTranslatedBtn.style.display = "none";
+
+      fetch("/caption", { method: "POST", body: formData })
+        .then(res => res.json())
+        .then(data => {
+          captionDiv.innerText = "Best Description: " + data.best_caption;
+
+          if (data.language !== "en" && data.translated_caption) {
+            translatedDiv.innerText = "Translated: " + data.translated_caption;
+            speakTranslatedBtn.style.display = "inline-block";
+          }
+
+          data.all_captions.forEach((cap, i) => {
+            const p = document.createElement("p");
+            p.innerText = `${i + 1}. ${cap}`;
+            captionsList.appendChild(p);
+          });
+
+          speakBtn.style.display = "inline-block";
+        });
+    }
+
+    // File Upload
+    imageInput.addEventListener("change", () => {
+      const file = imageInput.files[0];
+      if (!file) return;
+
+      uploadedPhoto.src = URL.createObjectURL(file);
+      uploadedPhoto.style.display = "block";
+      video.style.display = "none";
+
+      const formData = new FormData();
+      formData.append("image", file);
+      analyzeImage(formData);
+    });
+
+    // Open Camera
+    openCameraBtn.addEventListener("click", async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+        video.style.display = "block";
+        uploadedPhoto.style.display = "none";
+
+        captureBtn.style.display = "inline-block";
+        closeCameraBtn.style.display = "inline-block";
+        openCameraBtn.style.display = "none";
+      } catch {
+        alert("Camera not available");
+      }
+    });
+
+    // Capture Image
+    captureBtn.addEventListener("click", () => {
+      const ctx = canvas.getContext("2d");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+
+      // Show captured image on page
+      const imageDataURL = canvas.toDataURL("image/jpeg");
+      uploadedPhoto.src = imageDataURL;
+      uploadedPhoto.style.display = "block";
+
+      // Stop camera
+      stream.getTracks().forEach(track => track.stop());
+      video.style.display = "none";
+      captureBtn.style.display = "none";
+      closeCameraBtn.style.display = "none";
+      openCameraBtn.style.display = "inline-block";
+
+      // Send image to backend
+      canvas.toBlob(blob => {
+        const formData = new FormData();
+        formData.append("image", blob, "camera.jpg");
+        analyzeImage(formData);
+      }, "image/jpeg");
+    });
+
+    // Close Camera
+    closeCameraBtn.addEventListener("click", () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      video.style.display = "none";
+      captureBtn.style.display = "none";
+      closeCameraBtn.style.display = "none";
+      openCameraBtn.style.display = "inline-block";
+    });
+
+    // Speech
+    speakBtn.addEventListener("click", () => {
+      fetch("/speak", { method: "POST" });
+    });
+
+   speakTranslatedBtn.addEventListener("click", () => {
+  fetch("/speak_translated", { method: "POST" })
+    .then(res => res.json())
+    .then(data => {
+      if (data.audio_url) {
+        const audio = new Audio(data.audio_url);
+        audio.play();
+      } else {
+        alert("Speech not available");
+      }
+    });
+});
+
+  </script>
+</body>
+</html>
